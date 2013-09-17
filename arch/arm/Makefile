@@ -123,6 +123,8 @@ KBUILD_AFLAGS	+=$(CFLAGS_ABI) $(AFLAGS_ISA) $(arch-y) $(tune-y) -include asm/uni
 
 CHECKFLAGS	+= -D__arm__
 
+OBJCOPY_OUTPUT_FORMAT := elf32-littlearm
+
 #Default value
 head-y		:= arch/arm/kernel/head$(MMUEXT).o
 
@@ -276,6 +278,9 @@ core-y				+= $(machdirs) $(platdirs)
 drivers-$(CONFIG_OPROFILE)      += arch/arm/oprofile/
 
 libs-y				:= arch/arm/lib/ $(libs-y)
+
+PIE_LDS				:= arch/arm/kernel/pie.lds
+libpie-$(CONFIG_PIE)		+= arch/arm/libpie/
 
 # Default target when executing plain make
 ifeq ($(CONFIG_XIP_KERNEL),y)
