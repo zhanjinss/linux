@@ -546,6 +546,9 @@ const struct kernel_symbol *find_symbol(const char *name,
 					bool gplok,
 					bool warn);
 
+int init_module_at(char *path, void *(*module_alloc)(unsigned long),
+		   void (*module_memfree)(void*));
+
 /*
  * Walk the exported symbol table
  *
