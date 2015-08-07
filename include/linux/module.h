@@ -421,6 +421,8 @@ struct symsearch {
 	bool unused;
 };
 
+int init_module_at(char *path, void *(*module_alloc)(unsigned long size));
+
 /* Search for an exported symbol by name. */
 const struct kernel_symbol *find_symbol(const char *name,
 					struct module **owner,

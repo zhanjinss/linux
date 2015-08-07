@@ -17,6 +17,11 @@ obj-$(CONFIG_SOC_SAMA5)		+= sama5.o
 obj-$(CONFIG_PM)		+= pm.o
 obj-$(CONFIG_PM)		+= pm_suspend.o
 
+obj-m				+= testpie.o
+obj-m				+= atmel_pm.o
+
+CFLAGS_testpie.o += -g -O0
+
 ifeq ($(CONFIG_CPU_V7),y)
 AFLAGS_pm_suspend.o := -march=armv7-a
 endif

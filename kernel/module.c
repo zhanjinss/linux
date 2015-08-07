@@ -59,6 +59,7 @@
 #include <linux/jump_label.h>
 #include <linux/pfn.h>
 #include <linux/bsearch.h>
+#include <linux/firmware.h>
 #include <uapi/linux/module.h>
 #include "module-internal.h"
 
@@ -181,6 +182,9 @@ struct load_info {
 	struct {
 		unsigned int sym, str, mod, vers, info, pcpu;
 	} index;
+	void *(*module_alloc)(unsigned long);
+	bool dont_free;
+	bool dont_resolve;
 };
 
 /* We require a truly strong try_module_get(): 0 means failure due to
@@ -1963,16 +1967,18 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 			break;
 
 		case SHN_UNDEF:
-			ksym = resolve_symbol_wait(mod, info, name);
-			/* Ok if resolved.  */
-			if (ksym && !IS_ERR(ksym)) {
-				sym[i].st_value = ksym->value;
-				break;
-			}
+			if (!info->dont_resolve){
+				ksym = resolve_symbol_wait(mod, info, name);
+				/* Ok if resolved.  */
+				if (ksym && !IS_ERR(ksym)) {
+					sym[i].st_value = ksym->value;
+					break;
+				}
 
-			/* Ok if weak.  */
-			if (!ksym && ELF_ST_BIND(sym[i].st_info) == STB_WEAK)
-				break;
+				/* Ok if weak.  */
+				if (!ksym && ELF_ST_BIND(sym[i].st_info) == STB_WEAK)
+					break;
+			}
 
 			pr_warn("%s: Unknown symbol %s (err %li)\n",
 				mod->name, name, PTR_ERR(ksym));
@@ -2583,7 +2589,8 @@ out:
 
 static void free_copy(struct load_info *info)
 {
-	vfree(info->hdr);
+	if (!info->dont_free)
+		vfree(info->hdr);
 }
 
 static int rewrite_section_headers(struct load_info *info, int flags)
@@ -2804,8 +2811,12 @@ static int move_module(struct module *mod, struct load_info *info)
 	int i;
 	void *ptr;
 
-	/* Do the allocs. */
-	ptr = module_alloc_update_bounds(mod->core_size);
+	if (info->module_alloc)
+		ptr = info->module_alloc(mod->core_size);
+	else
+		/* Do the allocs. */
+		ptr = module_alloc_update_bounds(mod->core_size);
+
 	/*
 	 * The pointer to this block is stored in the module structure
 	 * which is inside the block. Just mark it as not being a
@@ -2975,7 +2986,9 @@ static void module_deallocate(struct module *mod, struct load_info *info)
 	percpu_modfree(mod);
 	module_arch_freeing_init(mod);
 	module_memfree(mod->module_init);
-	module_memfree(mod->module_core);
+	/* XXX */
+	if (!info->dont_free)
+		module_memfree(mod->module_core);
 }
 
 int __weak module_finalize(const Elf_Ehdr *hdr,
@@ -3324,7 +3337,10 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	flush_module_icache(mod);
 
 	/* Now copy in args */
+#if 0
 	mod->args = strndup_user(uargs, ~0UL >> 1);
+#endif
+	mod->args = kstrdup(uargs, GFP_KERNEL);
 	if (IS_ERR(mod->args)) {
 		err = PTR_ERR(mod->args);
 		goto free_arch_cleanup;
@@ -3446,6 +3462,37 @@ SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 
 	return load_module(&info, uargs, flags);
 }
+
+int init_module_at(char *path, void *(*module_alloc)(unsigned long size))
+{
+	int ret = 0;
+	struct load_info info = { };
+	const struct firmware *fw;
+
+	ret = request_firmware(&fw, path, NULL);
+	if (ret < 0)
+		return ret;
+
+	info.dont_free = true;
+	info.dont_resolve = true;
+	info.module_alloc = module_alloc;
+	info.hdr = (void *)fw->data;
+	info.len = fw->size;
+
+	if (info.len < sizeof(*(info.hdr))) {
+		ret = -ENOEXEC;
+		goto end;
+	}
+
+	ret = load_module(&info, "", 0);
+
+end:
+	release_firmware(fw);
+
+	return ret;
+}
+EXPORT_SYMBOL(init_module_at);
+
 
 static inline int within(unsigned long addr, void *start, unsigned long size)
 {
