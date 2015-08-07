@@ -268,6 +268,7 @@ apply_relocate(Elf32_Shdr *sechdrs, const char *strtab, unsigned int symindex,
 	}
 	return 0;
 }
+EXPORT_SYMBOL(apply_relocate);
 
 struct mod_unwind_map {
 	const Elf_Shdr *unw_sec;

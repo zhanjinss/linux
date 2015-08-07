@@ -399,6 +399,7 @@ __arm_ioremap_exec(phys_addr_t phys_addr, size_t size, bool cached)
 	return __arm_ioremap_caller(phys_addr, size, mtype,
 			__builtin_return_address(0));
 }
+EXPORT_SYMBOL(__arm_ioremap_exec);
 
 void __iounmap(volatile void __iomem *io_addr)
 {
