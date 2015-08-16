@@ -2583,7 +2583,8 @@ out:
 
 static void free_copy(struct load_info *info)
 {
-	vfree(info->hdr);
+	if (!info->dont_free)
+		vfree(info->hdr);
 }
 
 static int rewrite_section_headers(struct load_info *info, int flags)
@@ -2804,8 +2805,12 @@ static int move_module(struct module *mod, struct load_info *info)
 	int i;
 	void *ptr;
 
-	/* Do the allocs. */
-	ptr = module_alloc_update_bounds(mod->core_size);
+	if (load_info->module_alloc)
+		ptr = load_info->module_alloc(mod->core_size);
+	else
+		/* Do the allocs. */
+		ptr = module_alloc_update_bounds(mod->core_size);
+
 	/*
 	 * The pointer to this block is stored in the module structure
 	 * which is inside the block. Just mark it as not being a
