@@ -129,16 +129,25 @@ EXPORT_SYMBOL(at91_suspend_entering_slow_clock);
 static void (*at91_suspend_sram_fn)(void __iomem *pmc, void __iomem *ramc0,
 			  void __iomem *ramc1, int memctrl);
 
-extern void at91_pm_suspend_in_sram(void __iomem *pmc, void __iomem *ramc0,
-			    void __iomem *ramc1, int memctrl);
-extern u32 at91_pm_suspend_in_sram_sz;
-
 static void at91_pm_suspend(suspend_state_t state)
 {
 	unsigned int pm_data = at91_pm_data.memctrl;
 
 	pm_data |= (state == PM_SUSPEND_MEM) ?
 				AT91_PM_MODE(AT91_PM_SLOW_CLOCK) : 0;
+
+	if (!at91_suspend_sram_fn) {
+		const struct kernel_symbol *sym;
+		preempt_disable();
+		sym = find_symbol("at91_pm_suspend_in_sram", NULL, NULL, true, true);
+		if (sym) {
+			at91_suspend_sram_fn = sym->value;
+		}
+		preempt_enable();
+	}
+
+	if (!at91_suspend_sram_fn)
+		return;
 
 	flush_cache_all();
 	outer_disable();
@@ -348,6 +357,7 @@ static __init void at91_dt_ramc(void)
 	at91_pm_set_standby(standby);
 }
 
+#if 0
 static void __init at91_pm_sram_init(void)
 {
 	struct gen_pool *sram_pool;
@@ -393,14 +403,16 @@ static void __init at91_pm_sram_init(void)
 	at91_suspend_sram_fn = fncpy(at91_suspend_sram_fn,
 			&at91_pm_suspend_in_sram, at91_pm_suspend_in_sram_sz);
 }
+#endif
 
 static void __init at91_pm_init(void)
 {
-	at91_pm_sram_init();
+	//at91_pm_sram_init();
 
 	if (at91_cpuidle_device.dev.platform_data)
 		platform_device_register(&at91_cpuidle_device);
 
+	suspend_set_ops(&at91_pm_ops);
 	if (at91_suspend_sram_fn)
 		suspend_set_ops(&at91_pm_ops);
 	else

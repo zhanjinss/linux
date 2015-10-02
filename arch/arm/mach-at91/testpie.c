@@ -64,8 +64,8 @@ int __init test_init(void)
 	pr_err("%s +%d %s\n", __FILE__, __LINE__, __func__);
 	init_module_at("atmel_pm.ko", sram_alloc, sram_free);
 
-//	addr = ioremap(0xffffee00, SZ_512);
-	addr = ioremap(0xfc00c000, SZ_512);
+	addr = ioremap(0xffffee00, SZ_512);
+//	addr = ioremap(0xfc00c000, SZ_512);
 
 	pr_err("%s +%d %s %p\n", __FILE__, __LINE__, __func__, addr);
 
