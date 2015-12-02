@@ -11,7 +11,6 @@ obj-$(CONFIG_SOC_SAMA5)		+= sama5.o
 # Power Management
 obj-$(CONFIG_PM)		+= pm.o
 
-obj-m				+= testpie.o
 obj-m				+= atmel_pm.o
 
 ifeq ($(CONFIG_CPU_V7),y)

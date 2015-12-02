@@ -332,7 +332,6 @@ struct load_info {
 		unsigned int sym, str, mod, vers, info, pcpu;
 	} index;
 	void *(*module_alloc)(unsigned long);
-	void (*module_memfree)(void*);
 	bool dont_free;
 	bool dont_resolve;
 };
@@ -1015,9 +1014,7 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 	/* Store the name of the last unloaded module for diagnostic purposes */
 	strlcpy(last_unloaded_module, mod->name, sizeof(last_unloaded_module));
 
-	pr_err("%s +%d %s\n", __FILE__, __LINE__, __func__);
 	free_module(mod);
-	pr_err("%s +%d %s\n", __FILE__, __LINE__, __func__);
 	return 0;
 out:
 	mutex_unlock(&module_mutex);
@@ -2751,8 +2748,7 @@ out:
 
 static void free_copy(struct load_info *info)
 {
-	if (!info->dont_free)
-		vfree(info->hdr);
+	vfree(info->hdr);
 }
 
 static int rewrite_section_headers(struct load_info *info, int flags)
@@ -3147,10 +3143,7 @@ static void module_deallocate(struct module *mod, struct load_info *info)
 	percpu_modfree(mod);
 	module_arch_freeing_init(mod);
 	module_memfree(mod->module_init);
-	if (info->module_memfree)
-		info->module_memfree(mod->module_core);
-	else
-		module_memfree(mod->module_core);
+	module_memfree(mod->module_core);
 }
 
 int __weak module_finalize(const Elf_Ehdr *hdr,
@@ -3513,10 +3506,7 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	flush_module_icache(mod);
 
 	/* Now copy in args */
-#if 0
 	mod->args = strndup_user(uargs, ~0UL >> 1);
-#endif
-	mod->args = kstrdup(uargs, GFP_KERNEL);
 	if (IS_ERR(mod->args)) {
 		err = PTR_ERR(mod->args);
 		goto free_arch_cleanup;
@@ -3641,8 +3631,7 @@ SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 	return load_module(&info, uargs, flags);
 }
 
-int init_module_at(char *path, void *(*module_alloc)(unsigned long size),
-		   void (*module_memfree)(void*))
+int init_module_at(char *path, void *(*module_alloc)(unsigned long size))
 {
 	int ret = 0;
 	struct load_info info = { };
@@ -3655,7 +3644,6 @@ int init_module_at(char *path, void *(*module_alloc)(unsigned long size),
 	info.dont_free = true;
 	info.dont_resolve = true;
 	info.module_alloc = module_alloc;
-	info.module_memfree = module_memfree;
 	info.hdr = (void *)fw->data;
 	info.len = fw->size;
 
