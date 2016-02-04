@@ -1,0 +1,70 @@
+obj-y		:= pie.bin.elf
+
+# Report unresolved symbol references
+ldflags-y	+= --no-undefined
+# Delete all temporary local symbols
+ldflags-y	+= -X
+
+# Reset objcopy flags
+OBJCOPYFLAGS	=
+
+$(obj)/empty.o: arch/arm/pie/lib/empty.c FORCE
+	$(call if_changed_rule,cc_o_c)
+
+# Reference gcc builtins for use in PIE with __pie_
+$(obj)/pie_rename.syms: $(obj)/empty.o
+	@$(NM) $^ | awk '{if ($$3) print $$3,"__pie_"$$3}' > $@
+
+# For embedding address of the symbols copied from the PIE into the kernel
+$(obj)/pie.syms: $(obj)/pie.elf
+	@$(NM) $^ | awk '{if ($$3 && $$2 == toupper($$2)) print $$3,"=","0x"$$1";"}' > $@
+
+# Collect together the libpie objects
+LDFLAGS_libpie_stage1.o += -r
+
+$(obj)/libpie_stage1.o: $(obj)/empty.o
+	$(call if_changed,ld)
+
+# Rename the libpie gcc builtins with a __pie_ prefix
+OBJCOPYFLAGS_libpie_stage2.o += --redefine-syms=$(obj)/pie_rename.syms
+
+$(obj)/libpie_stage2.o: $(obj)/libpie_stage1.o
+	$(call if_changed,objcopy)
+
+CFLAGS_$(PIE_NAME).o += -fPIE
+
+OBJCOPYFLAGS_pie_stage1.o += --redefine-syms=$(obj)/pie_rename.syms
+$(obj)/pie_stage1.o: $(obj)/$(PIE_NAME).o $(obj)/pie_rename.syms
+	$(call if_changed,objcopy)
+
+LDFLAGS_pie_stage2.o += -r
+
+$(obj)/pie_stage2.o: $(obj)/pie_stage1.o $(obj)/libpie_stage2.o
+	$(call if_changed,ld)
+
+SEDFLAGS_lds	= s/PIE_NAME/$(PIE_NAME)/
+$(obj)/pie.lds.S: arch/arm/pie/pie.lds.S
+	@sed "$(SEDFLAGS_lds)" < $< > $@
+
+# Create the position independant executable
+LDFLAGS_pie.elf += -Bstatic -T $(obj)/pie.lds
+
+$(obj)/pie.elf: $(obj)/pie_stage2.o $(obj)/pie.lds
+	$(call if_changed,ld)
+
+# Create binary data for the kernel
+OBJCOPYFLAGS_pie.bin += -O binary
+
+$(obj)/pie.bin: $(obj)/pie.elf $(obj)/pie.syms
+	$(call if_changed,objcopy)
+
+# Import the data into the kernel
+OBJCOPYFLAGS_pie.bin.o += -B $(ARCH) -I binary -O elf32-littlearm
+
+$(obj)/pie.bin.o: $(obj)/pie.bin
+	$(call if_changed,objcopy)
+
+LDFLAGS_pie.bin.elf += --just-symbols=$(obj)/pie.syms -r
+$(obj)/pie.bin.elf: $(obj)/pie.bin.o $(obj)/pie_stage2.o
+	$(call if_changed,ld)
+
