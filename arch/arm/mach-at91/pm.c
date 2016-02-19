@@ -21,6 +21,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
+#include <linux/pie.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/clk/at91_pmc.h>
@@ -52,6 +53,8 @@ static struct {
 } at91_pm_data;
 
 void __iomem *at91_ramc_base[2];
+
+static struct pie_chunk *atmel_pm_pie;
 
 static int at91_pm_valid_state(suspend_state_t state)
 {
@@ -130,10 +133,6 @@ EXPORT_SYMBOL(at91_suspend_entering_slow_clock);
 
 static void (*at91_suspend_sram_fn)(void __iomem *pmc, void __iomem *ramc0,
 			  void __iomem *ramc1, int memctrl);
-
-extern void at91_pm_suspend_in_sram(void __iomem *pmc, void __iomem *ramc0,
-			    void __iomem *ramc1, int memctrl);
-extern u32 at91_pm_suspend_in_sram_sz;
 
 static void at91_pm_suspend(suspend_state_t state)
 {
@@ -353,11 +352,12 @@ static __init void at91_dt_ramc(void)
 	at91_pm_set_standby(standby);
 }
 
+extern void atmel_pm_suspend(void __iomem *pmc, void __iomem *ramc0,
+			     void __iomem *ramc1, int memctrl);
+
 static void __init at91_pm_sram_init(void)
 {
 	struct gen_pool *sram_pool;
-	phys_addr_t sram_pbase;
-	unsigned long sram_base;
 	struct device_node *node;
 	struct platform_device *pdev = NULL;
 
@@ -380,23 +380,11 @@ static void __init at91_pm_sram_init(void)
 		return;
 	}
 
-	sram_base = gen_pool_alloc(sram_pool, at91_pm_suspend_in_sram_sz);
-	if (!sram_base) {
-		pr_warn("%s: unable to alloc sram!\n", __func__);
+	atmel_pm_pie = pie_load_sections(sram_pool, atmel_pm, arch_arm_mach_at91_pm);
+	if (IS_ERR(atmel_pm_pie))
 		return;
-	}
 
-	sram_pbase = gen_pool_virt_to_phys(sram_pool, sram_base);
-	at91_suspend_sram_fn = __arm_ioremap_exec(sram_pbase,
-					at91_pm_suspend_in_sram_sz, false);
-	if (!at91_suspend_sram_fn) {
-		pr_warn("SRAM: Could not map\n");
-		return;
-	}
-
-	/* Copy the pm suspend handler to SRAM */
-	at91_suspend_sram_fn = fncpy(at91_suspend_sram_fn,
-			&at91_pm_suspend_in_sram, at91_pm_suspend_in_sram_sz);
+	at91_suspend_sram_fn = (typeof(at91_suspend_sram_fn))fn_to_pie(atmel_pm_pie, atmel_pm_suspend);
 }
 
 static void __init at91_pm_init(void)
