@@ -5,6 +5,7 @@ menuconfig ARCH_AT91
 	select COMMON_CLK_AT91
 	select PINCTRL
 	select SOC_BUS
+	select PIE
 
 if ARCH_AT91
 config SOC_SAMA5D2
