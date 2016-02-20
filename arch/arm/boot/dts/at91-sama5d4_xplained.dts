@@ -79,10 +79,6 @@
 				};
 			};
 
-			i2c0: i2c@f8014000 {
-				status = "okay";
-			};
-
 			macb0: ethernet@f8020000 {
 				phy-mode = "rmii";
 				status = "okay";
@@ -152,6 +148,12 @@
 						atmel,pins =
 							<AT91_PIOE 8 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>;
 					};
+					pinctrl_i2c1_pu: i2c1_pu {
+						atmel,pins =
+							<AT91_PIOE 29 AT91_PERIPH_C AT91_PINCTRL_PULL_UP	/* TWD1, conflicts with UART0 RX and DIBP */
+							 AT91_PIOE 30 AT91_PERIPH_C AT91_PINCTRL_PULL_UP>;	/* TWCK1, conflicts with UART0 TX and DIBN */
+					};
+
 				};
 			};
 		};
@@ -264,3 +266,15 @@
 		vin-supply = <&vcc_3v3_reg>;
 	};
 };
+
+&i2c1 {
+	pinctrl-0 = <&pinctrl_i2c1_pu>;
+	status = "okay";
+
+	rtc: rv1805@69 {
+		compatible = "microcrystal,rv1805";
+		reg = <0x69>;
+		status = "okay";
+	};
+};
+
