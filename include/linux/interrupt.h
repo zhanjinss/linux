@@ -61,6 +61,10 @@
  *                interrupt handler after suspending interrupts. For system
  *                wakeup devices users need to implement wakeup detection in
  *                their interrupt handlers.
+ * IRQF_COND_ONESHOT - If the IRQ is shared between a NO_THREAD user and a
+ *		regular interrupt, force the ONESHOT flag on the NO_THREAD user
+ *		when threaded irqs are enforced. Workaround for silly ATMEL
+ *		SoCs which share the timer and the UART interrupt
  * IRQF_NO_SOFTIRQ_CALL - Do not process softirqs in the irq thread context (RT)
  */
 #define IRQF_SHARED		0x00000080
@@ -75,7 +79,8 @@
 #define IRQF_NO_THREAD		0x00010000
 #define IRQF_EARLY_RESUME	0x00020000
 #define IRQF_COND_SUSPEND	0x00040000
-#define IRQF_NO_SOFTIRQ_CALL	0x00080000
+#define IRQF_COND_ONESHOT	0x00080000
+#define IRQF_NO_SOFTIRQ_CALL	0x00100000
 
 #define IRQF_TIMER		(__IRQF_TIMER | IRQF_NO_SUSPEND | IRQF_NO_THREAD)
 

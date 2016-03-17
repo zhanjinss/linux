@@ -114,7 +114,7 @@ static int pit_clkevt_set_periodic(struct clock_event_device *dev)
 	int ret;
 
 	ret = request_irq(data->irq, at91sam926x_pit_interrupt,
-			  IRQF_SHARED | IRQF_TIMER | IRQF_IRQPOLL,
+			  IRQF_SHARED | IRQF_TIMER | IRQF_IRQPOLL| IRQF_COND_ONESHOT,
 			  "at91_tick", data);
 	if (ret)
 		panic(pr_fmt("Unable to setup IRQ\n"));

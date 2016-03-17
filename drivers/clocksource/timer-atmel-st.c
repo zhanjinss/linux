@@ -133,7 +133,7 @@ static int clkevt32k_set_oneshot(struct clock_event_device *dev)
 	clkdev32k_disable_and_flush_irq();
 
 	ret = request_irq(atmel_st_irq, at91rm9200_timer_interrupt,
-			  IRQF_SHARED | IRQF_TIMER | IRQF_IRQPOLL,
+			  IRQF_SHARED | IRQF_TIMER | IRQF_IRQPOLL | IRQF_COND_ONESHOT,
 			  "at91_tick", regmap_st);
 	if (ret)
 		panic(pr_fmt("Unable to setup IRQ\n"));

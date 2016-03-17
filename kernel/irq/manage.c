@@ -1208,6 +1208,14 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	new->irq = irq;
 
 	/*
+	 * Workaround for silly ATMEL SoCs with shared timer and uart
+	 * interrupt.
+	 */
+	if (force_irqthreads && (new->flags & IRQF_COND_ONESHOT) &&
+	    (new->flags & IRQF_NO_THREAD))
+		new->flags |= IRQF_ONESHOT;
+
+	/*
 	 * Check whether the interrupt nests into another interrupt
 	 * thread.
 	 */
