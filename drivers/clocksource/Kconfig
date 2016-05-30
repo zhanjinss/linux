@@ -408,7 +408,14 @@ config ARMV7M_SYSTICK
 
 config ATMEL_PIT
 	select CLKSRC_OF if OF
-	def_bool SOC_AT91SAM9 || SOC_SAMA5
+	bool "Atmel Periodic Interval Timer (PIT)"
+	depends on SOC_AT91SAM9 || SOC_SAMA5
+	default SOC_AT91SAM9 || SOC_SAMA5
+	help
+	  Select this to get a clocksource based on the Atmel Periodic Interval
+	  Timer. It has a relatively low resolution and the TC Block clocksource
+	  should be preferred.
+	  It also provides a clock event device.
 
 config ATMEL_ST
 	bool "Atmel ST timer support" if COMPILE_TEST
