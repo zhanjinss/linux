@@ -34,14 +34,6 @@
 struct clk;
 
 /**
- * struct atmel_tcb_config - SoC data for a Timer/Counter Block
- * @counter_width: size in bits of a timer counter register
- */
-struct atmel_tcb_config {
-	size_t	counter_width;
-};
-
-/**
  * struct atmel_tc - information about a Timer/Counter Block
  * @pdev: physical device
  * @regs: mapping through which the I/O registers can be accessed
@@ -64,7 +56,6 @@ struct atmel_tc {
 	struct platform_device	*pdev;
 	void __iomem		*regs;
 	int                     id;
-	const struct atmel_tcb_config *tcb_config;
 	int			irq[3];
 	struct clk		*clk[3];
 	struct clk		*slow_clk;
