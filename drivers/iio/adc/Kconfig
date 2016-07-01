@@ -438,6 +438,7 @@ config SUN4I_LRADC
 	tristate "Allwinner sun4i LRADC driver"
 	depends on ARCH_SUNXI || COMPILE_TEST
 	select IIO_TRIGGER
+	select IIO_TRIGGERED_EVENT
 	help
 	  Say yes here to build support for the LRADC found on Allwinner SoCs.
 

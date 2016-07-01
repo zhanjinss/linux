@@ -26,6 +26,10 @@
 #include <linux/sched.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
+#include <linux/iio/events.h>
+#include <linux/iio/trigger.h>
+#include <linux/iio/trigger_consumer.h>
+#include <linux/iio/triggered_event.h>
 #include <linux/regulator/consumer.h>
 
 #define SUN4I_LRADC_CTRL		0x00
@@ -222,6 +226,124 @@ static const struct iio_info sun4i_lradc_info = {
 	.attrs = &sun4i_lradc_attribute_group,
 };
 
+static int sun4i_lradc_configure_trigger(struct iio_trigger *trig, bool state)
+{
+	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
+	struct sun4i_lradc_state *st = iio_priv(indio_dev);
+	u32 ctrl;
+	int i = 0;
+
+	ctrl = readl(st->base + SUN4I_LRADC_CTRL) & (CHAN_SELECT(0x3)
+						     | LRADC_SAMPLE_RATE(0x3)
+						     | LRADC_EN);
+
+	if (state)
+		ctrl |= FIRST_CONVERT_DLY(2) | LEVELA_B_CNT(1) | LRADC_HOLD_EN
+			| KEY_MODE_SEL(0) | LEVELB_VOL(i);
+	else
+		ctrl |= KEY_MODE_SEL(0x2);
+
+	writel(ctrl, st->base + SUN4I_LRADC_CTRL);
+
+	return 0;
+}
+
+static const struct iio_trigger_ops sun4i_lradc_trigger_ops = {
+	.owner = THIS_MODULE,
+	.set_trigger_state = &sun4i_lradc_configure_trigger,
+};
+
+static char *trigger_names[] =
+{
+	"1.9V",
+	"1.8V",
+	"1.7V",
+	"1.6V",
+};
+
+static int sun4i_lradc_trigger_init(struct iio_dev *indio_dev)
+{
+	int i, ret;
+	struct iio_trigger *trig;
+	struct sun4i_lradc_state *st = iio_priv(indio_dev);
+
+	for (i = 0; i < NUM_TRIGGERS; i++) {
+		trig = iio_trigger_alloc("%s-dev%d-%s", indio_dev->name,
+					 indio_dev->id, trigger_names[i]);
+		if (trig == NULL) {
+			ret = -ENOMEM;
+			goto error_trigger;
+		}
+
+		trig->dev.parent = indio_dev->dev.parent;
+		iio_trigger_set_drvdata(trig, indio_dev);
+		trig->ops = &sun4i_lradc_trigger_ops;
+
+		ret = iio_trigger_register(trig);
+		if (ret)
+			goto error_trigger;
+
+		st->trig[i] = trig;
+	}
+
+	return 0;
+
+error_trigger:
+	for (i--; i >= 0; i--) {
+		iio_trigger_unregister(st->trig[i]);
+		iio_trigger_free(st->trig[i]);
+	}
+
+	return ret;
+}
+
+static void sun4i_lradc_trigger_remove(struct iio_dev *indio_dev)
+{
+	struct sun4i_lradc_state *st = iio_priv(indio_dev);
+	int i;
+
+	for (i = 0; i < NUM_TRIGGERS; i++) {
+		iio_trigger_unregister(st->trig[i]);
+		iio_trigger_free(st->trig[i]);
+	}
+}
+
+static irqreturn_t sun4i_lradc_trigger_handler(int irq, void *private)
+{
+	struct iio_poll_func *pf = private;
+	struct iio_dev *indio_dev = pf->indio_dev;
+	struct sun4i_lradc_state *st = iio_priv(indio_dev);
+
+	if (st->last_event & CHAN1_KEYUP_IRQ)
+		iio_push_event(indio_dev,
+			       IIO_UNMOD_EVENT_CODE(IIO_VOLTAGE, 1,
+						    IIO_EV_TYPE_THRESH,
+						    IIO_EV_DIR_RISING),
+			       iio_get_time_ns());
+	if (st->last_event & CHAN1_KEYDOWN_IRQ)
+		iio_push_event(indio_dev,
+			       IIO_UNMOD_EVENT_CODE(IIO_VOLTAGE, 1,
+						    IIO_EV_TYPE_THRESH,
+						    IIO_EV_DIR_FALLING),
+			       iio_get_time_ns());
+	if (st->last_event & CHAN0_KEYUP_IRQ)
+		iio_push_event(indio_dev,
+			       IIO_UNMOD_EVENT_CODE(IIO_VOLTAGE, 0,
+						    IIO_EV_TYPE_THRESH,
+						    IIO_EV_DIR_RISING),
+			       iio_get_time_ns());
+	if (st->last_event & CHAN0_KEYDOWN_IRQ)
+		iio_push_event(indio_dev,
+			       IIO_UNMOD_EVENT_CODE(IIO_VOLTAGE, 0,
+						    IIO_EV_TYPE_THRESH,
+						    IIO_EV_DIR_FALLING),
+			       iio_get_time_ns());
+
+	iio_trigger_notify_done(indio_dev->trig);
+
+	return IRQ_HANDLED;
+}
+
 static int sun4i_lradc_probe(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev;
@@ -270,6 +392,21 @@ static int sun4i_lradc_probe(struct platform_device *pdev)
 	if (err)
 		return err;
 
+	err = sun4i_lradc_trigger_init(indio_dev);
+	if (err)
+		return err;
+
+	err = iio_triggered_event_setup(indio_dev, NULL,
+					sun4i_lradc_trigger_handler);
+	if (err)
+		goto err_trig;
+
+	err = devm_iio_device_register(dev, indio_dev);
+	if (err < 0) {
+		dev_err(dev, "Couldn't register the device.\n");
+		goto err_event;
+	}
+
 	/* lradc Vref internally is divided by 2/3 */
 	st->vref_mv = regulator_get_voltage(st->vref_supply) * 2 / 3000;
 
@@ -289,6 +426,11 @@ static int sun4i_lradc_probe(struct platform_device *pdev)
 	}
 
 	return 0;
+err_trig:
+	sun4i_lradc_trigger_remove(indio_dev);
+err_event:
+	iio_triggered_event_cleanup(indio_dev);
+	return err;
 }
 
 static int sun4i_lradc_remove(struct platform_device *pdev)
@@ -297,6 +439,9 @@ static int sun4i_lradc_remove(struct platform_device *pdev)
 	struct sun4i_lradc_state *st = iio_priv(indio_dev);
 
 	regulator_disable(st->vref_supply);
+	devm_iio_device_unregister(&pdev->dev, indio_dev);
+	iio_triggered_event_cleanup(indio_dev);
+	sun4i_lradc_trigger_remove(indio_dev);
 
 	return 0;
 }
