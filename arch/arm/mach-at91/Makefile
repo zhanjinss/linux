@@ -14,6 +14,10 @@ obj-$(CONFIG_PM)		+= pm_suspend.o
 ifeq ($(CONFIG_CPU_V7),y)
 AFLAGS_pm_suspend.o := -march=armv7-a
 endif
+# Backup mode will not compile for ARMv5 because of movt
+ifeq ($(CONFIG_SOC_SAMA5D2),y)
+AFLAGS_pm_suspend.o += -DBACKUP_MODE
+endif
 ifeq ($(CONFIG_PM_DEBUG),y)
 CFLAGS_pm.o += -DDEBUG
 endif
