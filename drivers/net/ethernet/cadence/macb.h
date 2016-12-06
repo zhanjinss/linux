@@ -889,6 +889,11 @@ struct macb_queue {
 	struct work_struct	tx_error_task;
 };
 
+struct macb_suspend_ctx {
+	u32 usrio;
+	u32 ncfgr;
+};
+
 struct macb {
 	void __iomem		*regs;
 	bool			native_io;
@@ -957,6 +962,9 @@ struct macb {
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 	enum macb_hw_dma_cap hw_dma_cap;
 #endif
+
+	/* Suspend context. */
+	struct macb_suspend_ctx suspend;
 };
 
 static inline bool macb_is_gem(struct macb *bp)
