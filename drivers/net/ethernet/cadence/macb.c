@@ -2510,6 +2510,38 @@ static int macb_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	}
 }
 
+static void macb_restore_features(struct net_device *netdev)
+{
+	struct macb *bp = netdev_priv(netdev);
+
+	netdev_features_t features = netdev->features;
+
+	/* TX checksum offload */
+	if (macb_is_gem(bp)) {
+		u32 dmacfg;
+
+		dmacfg = gem_readl(bp, DMACFG);
+		if (features & NETIF_F_HW_CSUM)
+			dmacfg |= GEM_BIT(TXCOEN);
+		else
+			dmacfg &= ~GEM_BIT(TXCOEN);
+		gem_writel(bp, DMACFG, dmacfg);
+	}
+
+	/* RX checksum offload */
+	if (macb_is_gem(bp)) {
+		u32 netcfg;
+
+		netcfg = gem_readl(bp, NCFGR);
+		if (features & NETIF_F_RXCSUM &&
+		    !(netdev->flags & IFF_PROMISC))
+			netcfg |= GEM_BIT(RXCOEN);
+		else
+			netcfg &= ~GEM_BIT(RXCOEN);
+		gem_writel(bp, NCFGR, netcfg);
+	}
+}
+
 static int macb_set_features(struct net_device *netdev,
 			     netdev_features_t features)
 {
@@ -2800,6 +2832,7 @@ static int macb_init(struct platform_device *pdev)
 		if (bp->caps & MACB_CAPS_USRIO_HAS_CLKEN)
 			val |= MACB_BIT(CLKEN);
 
+		bp->suspend.usrio = val;
 		macb_or_gem_writel(bp, USRIO, val);
 	}
 
@@ -2808,6 +2841,8 @@ static int macb_init(struct platform_device *pdev)
 	val |= macb_dbw(bp);
 	if (bp->phy_interface == PHY_INTERFACE_MODE_SGMII)
 		val |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
+
+	bp->suspend.ncfgr = val;
 	macb_writel(bp, NCFGR, val);
 
 	return 0;
@@ -3458,6 +3493,9 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		macb_writel(bp, WOL, MACB_BIT(MAG));
 		enable_irq_wake(bp->queues[0].irq);
 	} else {
+		if (netif_running(netdev)) {
+			macb_close(netdev);
+		}
 		clk_disable_unprepare(bp->tx_clk);
 		clk_disable_unprepare(bp->hclk);
 		clk_disable_unprepare(bp->pclk);
@@ -3482,6 +3520,17 @@ static int __maybe_unused macb_resume(struct device *dev)
 		clk_prepare_enable(bp->hclk);
 		clk_prepare_enable(bp->tx_clk);
 		clk_prepare_enable(bp->rx_clk);
+
+		macb_or_gem_writel(bp, USRIO, bp->suspend.usrio);
+		macb_writel(bp, NCFGR, bp->suspend.ncfgr);
+
+		phy_restore(netdev->phydev);
+		if (netif_running(netdev)) {
+			macb_open(netdev);
+		}
+
+		macb_set_rx_mode(netdev);
+		macb_restore_features(netdev);
 	}
 
 	netif_device_attach(netdev);
