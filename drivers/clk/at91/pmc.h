@@ -29,4 +29,6 @@ struct clk_range {
 int of_at91_get_clk_range(struct device_node *np, const char *propname,
 			  struct clk_range *range);
 
+void pmc_register_id(u8 id);
+
 #endif /* __PMC_H_ */
