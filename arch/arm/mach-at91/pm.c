@@ -519,24 +519,30 @@ static void __init at91_pm_bu_sram_init(void)
 
 	if (!pdev) {
 		pr_warn("%s: failed to find securam device!\n", __func__);
-		return;
+		goto fallback;
 	}
 
 	sram_pool = gen_pool_get(&pdev->dev, NULL);
 	if (!sram_pool) {
 		pr_warn("%s: securam pool unavailable!\n", __func__);
-		return;
+		goto fallback;
 	}
 
 	pm_bu = (void *)gen_pool_alloc(sram_pool, sizeof(struct at91_pm_bu));
 	if (!pm_bu) {
 		pr_warn("%s: unable to alloc securam!\n", __func__);
-		return;
+		goto fallback;
 	}
 
 	pm_bu->suspended = 0;
 	pm_bu->canary = virt_to_phys(&canary);
 	pm_bu->resume = virt_to_phys(cpu_resume);
+
+fallback:
+	if (pm_data.standby_mode == AT91_PM_BACKUP)
+		pm_data.standby_mode = AT91_PM_SLOW_CLOCK;
+	if (pm_data.suspend_mode != AT91_PM_BACKUP)
+		pm_data.suspend_mode = AT91_PM_SLOW_CLOCK;
 }
 
 struct pmc_info {
