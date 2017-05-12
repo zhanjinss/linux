@@ -96,6 +96,8 @@ static int pmc_suspend(void)
 	regmap_read(pmcreg, AT91_PMC_USB, &pmc_cache.usb);
 	regmap_read(pmcreg, AT91_PMC_IMR, &pmc_cache.imr);
 	regmap_read(pmcreg, AT91_PMC_PCSR1, &pmc_cache.pcsr1);
+	regmap_read(pmcreg, AT91_PMC_AUDIO_PLL0, &pmc_cache.audio_pll0);
+	regmap_read(pmcreg, AT91_PMC_AUDIO_PLL1, &pmc_cache.audio_pll1);
 
 	for (i = 0; registered_ids[i]; i++) {
 		regmap_write(pmcreg, AT91_PMC_PCR,
@@ -127,6 +129,13 @@ static void pmc_resume(void)
 	regmap_write(pmcreg, AT91_PMC_USB, pmc_cache.usb);
 	regmap_write(pmcreg, AT91_PMC_IMR, pmc_cache.imr);
 	regmap_write(pmcreg, AT91_PMC_PCER1, pmc_cache.pcsr1);
+	regmap_write(pmcreg, AT91_PMC_AUDIO_PLL0, pmc_cache.audio_pll0 &
+		     AT91_PMC_AUDIO_PLL_RESETN);
+	regmap_write(pmcreg, AT91_PMC_AUDIO_PLL1, pmc_cache.audio_pll1);
+	regmap_write(pmcreg, AT91_PMC_AUDIO_PLL0, pmc_cache.audio_pll0);
+
+	if (pmc_cache.audio_pll0 & AT91_PMC_AUDIO_PLL_PMCEN)
+		udelay(100);
 
 	for (i = 0; registered_ids[i]; i++) {
 		regmap_write(pmcreg, AT91_PMC_PCR,
