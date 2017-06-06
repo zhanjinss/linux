@@ -776,6 +776,11 @@
 						atmel,clk-output-range = <0 83000000>;
 					};
 
+					securam_clk: securam_clk {
+						#clock-cells = <0>;
+						reg = <51>;
+					};
+
 					i2s0_clk: i2s0_clk {
 						#clock-cells = <0>;
 						reg = <54>;
@@ -1165,6 +1170,15 @@
 				status = "disabled";
 			};
 
+			securam: sram@f8044000 {
+				compatible = "atmel,sama5d2-securam", "mmio-sram";
+				reg = <0xf8044000 0x1420>;
+				clocks = <&securam_clk>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0 0xf8044000 0x1420>;
+			};
+
 			rstc@f8048000 {
 				compatible = "atmel,sama5d3-rstc";
 				reg = <0xf8048000 0x10>;
@@ -1400,6 +1414,11 @@
 				clocks = <&pioA_clk>;
 			};
 
+			secumod@fc040000 {
+				compatible = "atmel,sama5d2-secumod", "syscon";
+				reg = <0xfc040000 0x100>;
+			};
+
 			tdes@fc044000 {
 				compatible = "atmel,at91sam9g46-tdes";
 				reg = <0xfc044000 0x100>;
@@ -1459,6 +1478,11 @@
 				assigned-clock-rates = <40000000>;
 				bosch,mram-cfg = <0x1100 0 0 64 0 0 32 32>;
 				status = "disabled";
+			};
+
+			sfrbu: sfr@fc05c000 {
+				compatible = "atmel,sama5d2-sfrbu", "syscon";
+				reg = <0xfc05c000 0x20>;
 			};
 
 			chipid@fc069000 {
