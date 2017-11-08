@@ -38,6 +38,7 @@ struct m48t59_private {
 	void __iomem *ioaddr;
 	int irq;
 	struct rtc_device *rtc;
+	struct nvmem_config nvmem_cfg;
 	spinlock_t lock; /* serialize the NVRAM and RTC access */
 };
 
@@ -334,16 +335,16 @@ static const struct rtc_class_ops m48t02_rtc_ops = {
 	.set_time	= m48t59_rtc_set_time,
 };
 
-static ssize_t m48t59_nvram_read(struct file *filp, struct kobject *kobj,
-				struct bin_attribute *bin_attr,
-				char *buf, loff_t pos, size_t size)
+static int m48t59_nvram_read(void *priv, unsigned int offset, void *val,
+			     size_t size)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev = priv;
+	struct device *dev = &pdev->dev;
 	struct m48t59_plat_data *pdata = dev_get_platdata(&pdev->dev);
 	struct m48t59_private *m48t59 = platform_get_drvdata(pdev);
 	ssize_t cnt = 0;
 	unsigned long flags;
+	char *buf = val;
 
 	spin_lock_irqsave(&m48t59->lock, flags);
 
@@ -352,19 +353,19 @@ static ssize_t m48t59_nvram_read(struct file *filp, struct kobject *kobj,
 
 	spin_unlock_irqrestore(&m48t59->lock, flags);
 
-	return cnt;
+	return 0;
 }
 
-static ssize_t m48t59_nvram_write(struct file *filp, struct kobject *kobj,
-				struct bin_attribute *bin_attr,
-				char *buf, loff_t pos, size_t size)
+static int m48t59_nvram_write(void *priv, unsigned int offset, void *val,
+			      size_t size)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev = priv;
+	struct device *dev = &pdev->dev;
 	struct m48t59_plat_data *pdata = dev_get_platdata(&pdev->dev);
 	struct m48t59_private *m48t59 = platform_get_drvdata(pdev);
 	ssize_t cnt = 0;
 	unsigned long flags;
+	char *buf = val;
 
 	spin_lock_irqsave(&m48t59->lock, flags);
 
@@ -373,17 +374,8 @@ static ssize_t m48t59_nvram_write(struct file *filp, struct kobject *kobj,
 
 	spin_unlock_irqrestore(&m48t59->lock, flags);
 
-	return cnt;
+	return 0;
 }
-
-static struct bin_attribute m48t59_nvram_attr = {
-	.attr = {
-		.name = "nvram",
-		.mode = S_IRUGO | S_IWUSR,
-	},
-	.read = m48t59_nvram_read,
-	.write = m48t59_nvram_write,
-};
 
 static int m48t59_rtc_probe(struct platform_device *pdev)
 {
@@ -484,25 +476,18 @@ static int m48t59_rtc_probe(struct platform_device *pdev)
 	if (IS_ERR(m48t59->rtc))
 		return PTR_ERR(m48t59->rtc);
 
+	m48t59->nvmem_cfg.name = "m48t59-";
+	m48t59->nvmem_cfg.word_size = 1;
+	m48t59->nvmem_cfg.stride = 1;
+	m48t59->nvmem_cfg.size = pdata->offset;
+	m48t59->nvmem_cfg.reg_read = m48t59_nvram_read;
+	m48t59->nvmem_cfg.reg_write = m48t59_nvram_write;
+	m48t59->nvmem_cfg.priv = pdev;
+	m48t59->rtc->nvmem_config = &m48t59->nvmem_cfg;
+	m48t59->rtc->nvram_old_abi = true;
 	m48t59->rtc->ops = ops;
 
-	ret = rtc_register_device(m48t59->rtc);
-	if (ret)
-		return ret;
-
-	m48t59_nvram_attr.size = pdata->offset;
-
-	ret = sysfs_create_bin_file(&pdev->dev.kobj, &m48t59_nvram_attr);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
-static int m48t59_rtc_remove(struct platform_device *pdev)
-{
-	sysfs_remove_bin_file(&pdev->dev.kobj, &m48t59_nvram_attr);
-	return 0;
+	return rtc_register_device(m48t59->rtc);
 }
 
 /* work with hotplug and coldplug */
@@ -513,7 +498,6 @@ static struct platform_driver m48t59_rtc_driver = {
 		.name	= "rtc-m48t59",
 	},
 	.probe		= m48t59_rtc_probe,
-	.remove		= m48t59_rtc_remove,
 };
 
 module_platform_driver(m48t59_rtc_driver);
