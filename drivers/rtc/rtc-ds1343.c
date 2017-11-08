@@ -83,6 +83,7 @@ struct ds1343_priv {
 	struct rtc_device *rtc;
 	struct regmap *map;
 	struct mutex mutex;
+	struct nvmem_config nvmem_cfg;
 	unsigned int irqen;
 	int irq;
 	int alarm_sec;
@@ -153,51 +154,21 @@ static ssize_t ds1343_store_glitchfilter(struct device *dev,
 static DEVICE_ATTR(glitch_filter, S_IRUGO | S_IWUSR, ds1343_show_glitchfilter,
 			ds1343_store_glitchfilter);
 
-static ssize_t ds1343_nvram_write(struct file *filp, struct kobject *kobj,
-			struct bin_attribute *attr,
-			char *buf, loff_t off, size_t count)
+static int ds1343_nvram_write(void *priv, unsigned int off, void *val,
+			      size_t bytes)
 {
-	int ret;
-	unsigned char address;
-	struct device *dev = kobj_to_dev(kobj);
-	struct ds1343_priv *priv = dev_get_drvdata(dev);
+	struct ds1343_priv *ds1343 = priv;
 
-	address = DS1343_NVRAM + off;
-
-	ret = regmap_bulk_write(priv->map, address, buf, count);
-	if (ret < 0)
-		dev_err(&priv->spi->dev, "Error in nvram write %d", ret);
-
-	return (ret < 0) ? ret : count;
+	return regmap_bulk_write(ds1343->map, DS1343_NVRAM + off, val, bytes);
 }
 
-
-static ssize_t ds1343_nvram_read(struct file *filp, struct kobject *kobj,
-				struct bin_attribute *attr,
-				char *buf, loff_t off, size_t count)
+static int ds1343_nvram_read(void *priv, unsigned int off, void *val,
+			     size_t bytes)
 {
-	int ret;
-	unsigned char address;
-	struct device *dev = kobj_to_dev(kobj);
-	struct ds1343_priv *priv = dev_get_drvdata(dev);
+	struct ds1343_priv *ds1343 = priv;
 
-	address = DS1343_NVRAM + off;
-
-	ret = regmap_bulk_read(priv->map, address, buf, count);
-	if (ret < 0)
-		dev_err(&priv->spi->dev, "Error in nvram read %d\n", ret);
-
-	return (ret < 0) ? ret : count;
+	return regmap_bulk_read(ds1343->map, DS1343_NVRAM + off, val, bytes);
 }
-
-
-static struct bin_attribute nvram_attr = {
-	.attr.name	= "nvram",
-	.attr.mode	= S_IRUGO | S_IWUSR,
-	.read		= ds1343_nvram_read,
-	.write		= ds1343_nvram_write,
-	.size		= DS1343_NVRAM_LEN,
-};
 
 static ssize_t ds1343_show_tricklecharger(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -252,16 +223,9 @@ static int ds1343_sysfs_register(struct device *dev)
 		return err;
 
 	err = device_create_file(dev, &dev_attr_trickle_charger);
-	if (err)
-		goto error1;
-
-	err = device_create_bin_file(dev, &nvram_attr);
 	if (!err)
 		return 0;
 
-	device_remove_file(dev, &dev_attr_trickle_charger);
-
-error1:
 	device_remove_file(dev, &dev_attr_glitch_filter);
 
 	return err;
@@ -271,7 +235,6 @@ static void ds1343_sysfs_unregister(struct device *dev)
 {
 	device_remove_file(dev, &dev_attr_glitch_filter);
 	device_remove_file(dev, &dev_attr_trickle_charger);
-	device_remove_bin_file(dev, &nvram_attr);
 }
 
 static int ds1343_read_time(struct device *dev, struct rtc_time *dt)
@@ -556,6 +519,15 @@ static int ds1343_probe(struct spi_device *spi)
 	if (IS_ERR(priv->rtc))
 		return PTR_ERR(priv->rtc);
 
+	priv->nvmem_cfg.name = "ds1343-";
+	priv->nvmem_cfg.word_size = 1;
+	priv->nvmem_cfg.stride = 1;
+	priv->nvmem_cfg.size = DS1343_NVRAM_LEN;
+	priv->nvmem_cfg.reg_read = ds1343_nvram_read;
+	priv->nvmem_cfg.reg_write = ds1343_nvram_write;
+	priv->nvmem_cfg.priv = priv;
+	priv->rtc->nvmem_config = &priv->nvmem_cfg;
+	priv->rtc->nvram_old_abi = true;
 	priv->rtc->ops = &ds1343_rtc_ops;
 
 	res = rtc_register_device(priv->rtc);
