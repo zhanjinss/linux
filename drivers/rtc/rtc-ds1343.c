@@ -596,17 +596,17 @@ static const struct rtc_class_ops ds1343_rtc_ops = {
 	.alarm_irq_enable = ds1343_alarm_irq_enable,
 };
 
+static const struct regmap_config config = {
+	.reg_bits = 8,
+	.val_bits = 8,
+	.write_flag_mask = 0x80,
+};
+
 static int ds1343_probe(struct spi_device *spi)
 {
 	struct ds1343_priv *priv;
-	struct regmap_config config;
 	unsigned int data;
 	int res;
-
-	memset(&config, 0, sizeof(config));
-	config.reg_bits = 8;
-	config.val_bits = 8;
-	config.write_flag_mask = 0x80;
 
 	priv = devm_kzalloc(&spi->dev, sizeof(struct ds1343_priv), GFP_KERNEL);
 	if (!priv)
