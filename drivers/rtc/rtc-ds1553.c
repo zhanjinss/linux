@@ -233,44 +233,39 @@ static const struct rtc_class_ops ds1553_rtc_ops = {
 	.alarm_irq_enable	= ds1553_rtc_alarm_irq_enable,
 };
 
-static ssize_t ds1553_nvram_read(struct file *filp, struct kobject *kobj,
-				 struct bin_attribute *bin_attr,
-				 char *buf, loff_t pos, size_t size)
+static int ds1553_nvram_read(void *priv, unsigned int pos, void *val,
+			     size_t size)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct platform_device *pdev = to_platform_device(dev);
-	struct rtc_plat_data *pdata = platform_get_drvdata(pdev);
+	struct rtc_plat_data *pdata = priv;
 	void __iomem *ioaddr = pdata->ioaddr;
 	ssize_t count;
+	char *buf = val;
 
 	for (count = 0; count < size; count++)
 		*buf++ = readb(ioaddr + pos++);
-	return count;
+	return 0;
 }
 
-static ssize_t ds1553_nvram_write(struct file *filp, struct kobject *kobj,
-				  struct bin_attribute *bin_attr,
-				  char *buf, loff_t pos, size_t size)
+static int ds1553_nvram_write(void *priv, unsigned int pos, void *val,
+			      size_t size)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct platform_device *pdev = to_platform_device(dev);
-	struct rtc_plat_data *pdata = platform_get_drvdata(pdev);
+	struct rtc_plat_data *pdata = priv;
 	void __iomem *ioaddr = pdata->ioaddr;
 	ssize_t count;
+	char *buf = val;
 
 	for (count = 0; count < size; count++)
 		writeb(*buf++, ioaddr + pos++);
 	return count;
 }
 
-static struct bin_attribute ds1553_nvram_attr = {
-	.attr = {
-		.name = "nvram",
-		.mode = S_IRUGO | S_IWUSR,
-	},
+static struct nvmem_config ds1553_nvmem_cfg = {
+	.name = "ds1553_nvram",
+	.word_size = 1,
+	.stride = 1,
 	.size = RTC_OFFSET,
-	.read = ds1553_nvram_read,
-	.write = ds1553_nvram_write,
+	.reg_read = ds1553_nvram_read,
+	.reg_write = ds1553_nvram_write,
 };
 
 static int ds1553_rtc_probe(struct platform_device *pdev)
@@ -313,6 +308,9 @@ static int ds1553_rtc_probe(struct platform_device *pdev)
 		return PTR_ERR(pdata->rtc);
 
 	pdata->rtc->ops = &ds1553_rtc_ops;
+	ds1553_nvmem_cfg.priv = pdata;
+	pdata->rtc->nvmem_config = &ds1553_nvmem_cfg;
+	pdata->rtc->nvram_old_abi = true;
 
 	ret = rtc_register_device(pdata->rtc);
 	if (ret)
@@ -328,20 +326,6 @@ static int ds1553_rtc_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = sysfs_create_bin_file(&pdev->dev.kobj, &ds1553_nvram_attr);
-	if (ret)
-		dev_err(&pdev->dev, "unable to create sysfs file: %s\n",
-			ds1553_nvram_attr.attr.name);
-
-	return 0;
-}
-
-static int ds1553_rtc_remove(struct platform_device *pdev)
-{
-	struct rtc_plat_data *pdata = platform_get_drvdata(pdev);
-
-	sysfs_remove_bin_file(&pdev->dev.kobj, &ds1553_nvram_attr);
-
 	return 0;
 }
 
@@ -350,7 +334,6 @@ MODULE_ALIAS("platform:rtc-ds1553");
 
 static struct platform_driver ds1553_rtc_driver = {
 	.probe		= ds1553_rtc_probe,
-	.remove		= ds1553_rtc_remove,
 	.driver		= {
 		.name	= "rtc-ds1553",
 	},
