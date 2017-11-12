@@ -2077,8 +2077,7 @@ ds1685_rtc_probe(struct platform_device *pdev)
 	ds1685_rtc_switch_to_bank0(rtc);
 
 	/* Register the device as an RTC. */
-	rtc_dev = rtc_device_register(pdev->name, &pdev->dev,
-				      &ds1685_rtc_ops, THIS_MODULE);
+	rtc_dev = devm_rtc_allocate_device(&pdev->dev);
 
 	/* Success? */
 	if (IS_ERR(rtc_dev))
@@ -2093,15 +2092,15 @@ ds1685_rtc_probe(struct platform_device *pdev)
 	rtc->uie_unsupported = pdata->uie_unsupported;
 
 	rtc->dev = rtc_dev;
+	rtc_dev->ops = &ds1685_rtc_ops;
 
 #ifdef CONFIG_SYSFS
 	ret = ds1685_rtc_sysfs_register(&pdev->dev);
 	if (ret)
-		rtc_device_unregister(rtc->dev);
+		return ret;
 #endif
 
-	/* Done! */
-	return ret;
+	return rtc_register_device(rtc_dev);
 }
 
 /**
